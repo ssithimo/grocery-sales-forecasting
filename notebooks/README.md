@@ -1,0 +1,1 @@
+This folder contains the R markdown file containing the scripts for the grocery sales forecasting project with Alomega foods stores. This project explores the use of the Holt-Winter and moving average models.
