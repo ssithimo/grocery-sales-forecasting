@@ -1,0 +1,173 @@
+---
+title: "Grocery_Sales_HWModeling"
+author: "Sam Sithimolada"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document: default
+---
+
+# Overview
+
+Alomega Food Stores, a hypothetical regional grocery chain with 27 locations across the Midwest, seeks to improve operational planning and inventory management by forecasting monthly sales volume. This report outlines a time series modeling approach based solely on historical sales data collected over a span of 47 months. The goal is to identify the most accurate model for forecasting future monthly sales, with emphasis on predictive performance and interpretability.
+
+## 1. Exploratory Data Analysis
+
+The sales data spans January 2003 through November 2006. To evaluate model performance realistically, the data is partitioned into a training set (January 2003 to December 2005) and a validation set (January 2006 to November 2006).
+
+
+```{r, data prepartion and analysis}
+library(forecast)
+#load data
+data = read.csv("alomega.csv")
+
+#create ts obj
+sales_ts = ts(data$Sales, start = c(2003, 1), freq = 12)
+
+#train test split
+nvalid = 11
+sales_ts_train = head(sales_ts, length(sales_ts)-nvalid)
+sales_ts_test = tail(sales_ts, nvalid)
+
+autoplot(sales_ts_train/1000, main = "Alomega Food Store Sales",
+         xlab = "Time (Monthly)", ylab = "Sales (1000's $USD)")
+```
+
+The series exhibits moderate seasonality, with sales typically dipping in late fall and rising again in early spring. There appears to be a slight upward trend across the observed period, though noise levels are considerable.
+
+## 2. Holt-Winters Modeling
+
+To model both seasonality and potential trend, the Holt-Winters exponential smoothing method was applied. The optimal ETS model is selected automatically.
+
+```{r, HW modeling}
+#HW model assumes both trend and seasonality, to find optimal use ZZZ
+HW_model_opt = ets(sales_ts_train, model = "ZZZ")
+HW_model_opt #optimal model is MNM, alpha = 1x10^(-4)
+
+#plot HW optimal model against training set
+autoplot(sales_ts_train/1000, main = "Alomega Food Store Sales",
+         xlab = "Time (Monthly)", ylab = "Sales (1000's $USD)")+
+  autolayer(HW_model_opt$fitted/1000, series = "Holt-Winter's MNM Model")
+```
+
+The optimal model structure found by the software for the Holt-Winter's model is MNM (multiplicative noise, no trend, and multiplicative seasonality).
+
+## 2.1 Forecasting and Evaluation
+
+```{r, HW forecast}
+HW_opt_pred = forecast(HW_model_opt, h = nvalid, level = 0)
+HW_06pred = HW_opt_pred[[2]] #2 to get the predicted outcomes
+Jan06_pred = HW_06pred[1] #1 to get the first output of the predicted outcome
+Jan06_pred
+```
+
+The predicted sales volume for January 2006 is $573,437.70
+
+```{r, HW model residual analysis}
+#check accuracy
+accuracy(HW_opt_pred, sales_ts_test)
+
+#check residuals for assumptions
+checkresiduals(HW_opt_pred)
+```
+
+MAPE
+------
+training set = 10.97%
+validation set = 19.80%
+
+Overall, the model is not very robust as there is a 9% increase in the testing error. The model did not do well on the unseen data in the test set. Checking the residuals, the model seems to have some constant variance in the early yeaers but there seems to be a pattern. The residuals also seem to be distributed slightly right skewed and the autocorrelation function shows spikes in lags 1 and 2 which might suggest some serial correlation and pattern still present in the data.
+
+## 3. Moving Average Modeling
+
+To provide a simpler benchmark, a 3-period trailing moving average was applied.
+
+```{r, ma3 modeling}
+#trailing ma3
+library(zoo)
+w = 3
+ma3_model = rollmean(sales_ts_train, k = w, align = "right")
+
+autoplot(sales_ts_train/1000, main = "Alomega Food Store Sales",
+         xlab = "Time (Monthly)", ylab = "Sales (1000's $USD)")+
+  autolayer(ma3_model/1000, series = "moving average (3)")
+
+```
+
+The moving average model captures seasonality weakly and underperforms in early years. It tends to lag the actual sales pattern.
+
+## 3.1 Forecasting and Evaluation
+
+```{r, ma3 forecast jan 2006}
+#start from 2006 Jan and extend to Nov
+Jan06_pred_ma3 = tail(ma3_model, 1)
+forecast_06_ma3 = ts(rep(Jan06_pred_ma3, 11), start = c(2006, 1),  freq = 12)
+forecast_06_jan = head(forecast_06_ma3, 1)
+forecast_06_jan
+```
+
+The forecasted January 2006 sales is $311,000
+
+```{r, forecasted plot}
+autoplot(sales_ts/1000, main = "Alomega Food Store Sales",
+         xlab = "Time (Monthly)", ylab = "Sales (1000's $USD)")+
+  autolayer(ma3_model/1000, series = "ma(3) train")+
+  autolayer(forecast_06_ma3/1000, series = "ma(3) test")
+
+```
+
+```{r, ma3 model performance}
+#accuracy training
+ma3_train_acc = accuracy(ma3_model, sales_ts_train)
+ma3_train_acc
+
+#accuracy testing
+ma3_test_acc = accuracy(forecast_06_ma3, sales_ts_test)
+ma3_test_acc
+
+#check residuals
+residuals_ma3_test = forecast_06_ma3 - sales_ts_test
+
+#time series plot
+plot(residuals_ma3_test)
+
+#normality check
+hist(residuals_ma3_test)
+qqnorm(residuals_ma3_test)
+
+#autocorrelation check
+acf(residuals_ma3_test)
+```
+
+MAPE
+-----
+training set = 19.64%
+validation set = 29.43%
+
+The MA(3) model underperforms substantially compared to Holt-Winters. The residuals are non-normal and show serial correlation, suggesting poor model fit and assumption violations.
+
+## 4. Final Recommendation and December 2006 Forecast
+
+Based on the comparative analysis, the Holt-Winters MNM model demonstrates stronger forecasting ability and more reasonable error rates. The final December 2006 sales forecast using this model is:
+
+```{r, HW model December 2006 forecast}
+#choosing HW
+HW_model = ets(sales_ts, model = "MNM")
+Dec06_forecast = forecast(HW_model, h = 1, level = 0)
+Dec06_forecast[[2]]
+```
+
+Forecasted December 2006 sales: $226,910.50
+
+## 5. Business Recommendation
+
+The Holt-Winters MNM model is recommended for monthly sales forecasting at Alomega Food Stores. It captures seasonality effectively and produces relatively accurate forecasts, with a validation MAPE under 20%. For December 2006, expected sales volume is approximately $226,910.50.
+
+To improve model accuracy, we recommend:
+
+  - Updating forecasts monthly as new data becomes available.
+
+  - Monitoring model assumptions for violations.
+
+  - Exploring additional features, such as promotions, holidays, and store-level effects, to         enhance predictive power.
+
