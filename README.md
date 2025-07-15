@@ -8,7 +8,7 @@ This project presents a time series forecasting analysis for **Alomega Food Stor
 
 ## 🗂️ Dataset
 
-**Source:** `MidtermData.csv`  
+**Source:** `alomega.csv`  
 **Description:** 47 months of monthly sales data  
 **Column:**
 - `Sales`: Monthly total sales in USD
