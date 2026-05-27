@@ -117,7 +117,7 @@ should apply the uncertainty range as a decision tool:
 ## 📁 Files
 - `data/staterbros.csv` — Monthly sales data
 - `notebooks/Grocery_Sales_HWModeling.Rmd` — Full analysis: EDA, model development, evaluation, residual diagnostics, and business impact calculations
-- `Executive_summary_stater_brps.pdf` — One-page non-technical summary for stakeholders
+- `Executive_Summary_StaterBros.pdf` — One-page non-technical summary for stakeholders
 
 ---
 
