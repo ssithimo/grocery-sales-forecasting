@@ -1,0 +1,289 @@
+---
+title: "Grocery_Sales_HWModeling"
+author: "Sam Sithimolada"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document: default
+---
+
+# Overview
+
+Stater Bros. Markets, a regional grocery chain with 169 locations across Southern California, operates in one of the most margin-sensitive environments in retail because grocery chains typically earn 1–3% net profit, meaning forecast accuracy directly impacts the bottom line. Not stocking enough during high-demand periods risks unrecoverable lost sales, while overstocking ties up working capital and forces margin-compressing markdowns.
+
+This report develops a time series forecasting model using 47 months of historical chain-wide sales data (January 2022 – November 2025) to produce a reliable December 2025 forecast for inventory planning and purchasing decisions. Two models are evaluated — Holt-Winters Exponential Smoothing and a 3-month Moving Average — with emphasis on validation accuracy, residual diagnostics, and translating forecast uncertainty into actionable planning ranges for store-level buyers.
+
+## 1. Exploratory Data Analysis
+
+The sales data spans January 2022 through November 2025. To evaluate model performance realistically, the data is partitioned into a training set (January 2022 to December 2024) and a validation set (January 2025 to November 2025).
+
+
+```{r, data prepartion and analysis}
+library(forecast)
+#load data
+data = read.csv("staterbros.csv")
+
+#create ts obj
+sales_ts = ts(data$Sales, start = c(2022, 1), freq = 12)
+
+#train test split
+nvalid = 11
+sales_ts_train = head(sales_ts, length(sales_ts)-nvalid)
+sales_ts_test = tail(sales_ts, nvalid)
+
+autoplot(sales_ts_train/1000000, main = "Stater Bros Markets Sales",
+         xlab = "Time (Monthly)", ylab = "Sales (Millions $USD)")
+```
+
+The series exhibits moderate seasonality, with sales typically dipping in late fall and rising again in early spring. There appears to be a slight upward trend across the observed period, though noise levels are considerable.
+
+## 2. Holt-Winters Modeling
+
+To model both seasonality and potential trend, the Holt-Winters exponential smoothing method was applied. The optimal ETS model is selected automatically.
+
+```{r, HW modeling}
+#HW model assumes both trend and seasonality, to find optimal use ZZZ
+HW_model_opt = ets(sales_ts_train, model = "ZZZ")
+HW_model_opt #optimal model is MNM, alpha = 1x10^(-4)
+
+#plot HW optimal model against training set
+autoplot(sales_ts_train/1000000, main = "Stater Bros Markets Sales",
+         xlab = "Time (Monthly)", ylab = "Sales (Millions $USD)")+
+  autolayer(HW_model_opt$fitted/1000000, series = "Holt-Winter's MNM Model")
+```
+
+The optimal model structure found by the software for the Holt-Winter's model is MNM (multiplicative noise, no trend, and multiplicative seasonality).
+
+## 2.1 Forecasting and Evaluation
+
+```{r, HW forecast}
+HW_opt_pred = forecast(HW_model_opt, h = nvalid, level = 0)
+HW_2025pred = HW_opt_pred[[2]] #2 to get the predicted outcomes
+Jan2025_pred = HW_2025pred[1] #1 to get the 1st output of the predicted outcome since jan is 1st
+Jan2025_pred
+```
+
+The predicted sales volume for January 2025 is $591,265,977.69
+
+```{r, HW model residual analysis}
+#check accuracy
+accuracy(HW_opt_pred, sales_ts_test)
+
+#check residuals for assumptions
+checkresiduals(HW_opt_pred)
+```
+
+MAPE
+------
+training set = 10.86%
+validation set = 20.39%
+
+Overall, the model is not very robust as there is a 10% increase in the testing error. The model did not do well on the unseen data in the test set. Checking the residuals, the model seems to have some constant variance in the early years but there seems to be a pattern. The residuals also seem to be distributed slightly right skewed and the autocorrelation function shows spikes in lags 1 and 2 which might suggest some serial correlation and pattern still present in the data.
+
+## 3. Moving Average Modeling
+
+To provide a simpler benchmark, a 3-period trailing moving average was applied.
+
+```{r, ma3 modeling}
+#trailing ma3
+library(zoo)
+w = 3
+ma3_model = rollmean(sales_ts_train, k = w, align = "right")
+
+autoplot(sales_ts_train/1000000, main = "Stater Bros Markets Sales",
+         xlab = "Time (Monthly)", ylab = "Sales (Millions $USD)")+
+  autolayer(ma3_model/1000000, series = "moving average (3)")
+
+```
+
+The moving average model captures seasonality weakly and underperforms in early years. It tends to lag the actual sales pattern.
+
+## 3.1 Forecasting and Evaluation
+
+```{r, ma3 forecast jan 2025}
+#start from jan 2025 and extend to Nov
+Jan2025_pred_ma3 = tail(ma3_model, 1)
+forecast_2025_ma3 = ts(rep(Jan2025_pred_ma3, 11), start = c(2025, 1),  freq = 12)
+forecast_2025_jan = head(forecast_2025_ma3, 1)
+forecast_2025_jan
+```
+
+The ma(3) forecasted January 2025 sales is $311,000,000
+
+```{r, forecasted plot}
+autoplot(sales_ts/1000000, main = "Stater Bros Markets Sales",
+         xlab = "Time (Monthly)", ylab = "Sales (Millions $USD)")+
+  autolayer(ma3_model/1000000, series = "ma(3) train")+
+  autolayer(forecast_2025_ma3/1000000, series = "ma(3) test")
+
+```
+
+```{r, ma3 model performance}
+#accuracy training
+ma3_train_acc = accuracy(ma3_model, sales_ts_train)
+ma3_train_acc
+
+#accuracy testing
+ma3_test_acc = accuracy(forecast_2025_ma3, sales_ts_test)
+ma3_test_acc
+
+#check residuals
+residuals_ma3_test = forecast_2025_ma3 - sales_ts_test
+
+#time series plot
+plot(residuals_ma3_test)
+
+#normality check
+hist(residuals_ma3_test)
+qqnorm(residuals_ma3_test)
+
+#autocorrelation check
+acf(residuals_ma3_test)
+```
+
+MAPE
+-----
+training set = 19.64%
+validation set = 29.43%
+
+The MA(3) model underperforms substantially compared to Holt-Winters. The residuals are non-normal and show serial correlation, suggesting poor model fit and assumption violations.
+
+## 4. Final Recommendation and December 2025 Forecast
+
+Based on the comparative analysis, the Holt-Winters MNM model demonstrates stronger forecasting ability and more reasonable error rates. The final December 2025 sales forecast using this model is:
+
+```{r, HW model December 2025 forecast}
+#choosing HW
+HW_model = ets(sales_ts, model = "MNM")
+Dec2025_forecast = forecast(HW_model, h = 1, level = 0)
+Dec2025_forecast[[2]] #we want to extract the "mean" whcih is 2nd output
+```
+
+Forecasted December 2025 sales: $239,481,293.00
+
+```{r, Business Impact Calculations}
+hw_mape_validation = 0.2039
+
+#chain-wide dollar uncertainty range
+dollar_uncertainty = Dec06_forecast[[2]]*hw_mape_validation
+lower_estimate = Dec06_forecast[[2]] - dollar_uncertainty
+upper_estimate = Dec06_forecast[[2]] + dollar_uncertainty
+
+#per store breakdown (169 stores)
+n_stores = 169
+per_store_forecast = Dec06_forecast[[2]]/n_stores
+per_store_uncertainty = dollar_uncertainty/n_stores
+
+cat("=== Dec 2006 Forecast: Business Impact ===\n")
+cat(sprintf("Per-store forecast:        $%s\n",   
+            format(round(per_store_forecast), big.mark=",")))
+cat(sprintf("Per-store uncertainty:     ±$%s\n",  
+            format(round(per_store_uncertainty), big.mark=",")))
+cat(sprintf("Per-store range:           $%s – $%s\n",
+            format(round(lower_estimate/n_stores), big.mark=","),
+            format(round(upper_estimate/n_stores), big.mark=",")))
+cat(sprintf("Chain-wide uncertainty:    ±$%s\n",  
+            format(round(dollar_uncertainty), big.mark=",")))
+cat(sprintf("Chain-wide range:          $%s – $%s\n",
+            format(round(lower_estimate), big.mark=","),
+            format(round(upper_estimate), big.mark=",")))
+```
+
+## 5. Conclusion & Business Recommendations
+
+### Model Selection & Evaluation
+
+Two forecasting models were developed and evaluated against an 
+11-month validation set (January–November 2022): Holt-Winters 
+Exponential Smoothing (ETS MNM) and a 3-month Moving Average (MA(3)).
+
+| Model | Train MAPE | Test MAPE | Test RMSE |
+|-------|-----------|-----------|-----------|
+| Holt-Winters (MNM) | 10.87% | 20.39% | $127,910,148 |
+| Moving Average MA(3) | — | 29.43% | $203,577,995 |
+
+Holt-Winters outperformed MA(3) on both MAPE and RMSE across the 
+validation set and was selected as the forecasting model. Its 
+multiplicative seasonality structure (MNM) is appropriate for 
+Stater Bros. sales data, where seasonal fluctuations scale 
+proportionally with the level of sales rather than remaining 
+constant — a realistic assumption for grocery retail where 
+holiday-driven demand spikes grow as the chain expands.
+
+The gap between training MAPE (10.87%) and test MAPE (20.39%) 
+indicates the model fits historical patterns well but generalizes 
+with reduced accuracy on unseen data. This is expected given the 
+limited dataset size (47 months) and the absence of external 
+variables that could explain demand variation beyond seasonal 
+patterns alone.
+
+### Residual Diagnostics
+
+Ljung-Box test results indicate statistically significant 
+autocorrelation in the residuals (Q* = 23.63, df = 7, p = 0.001). 
+This means the model has not fully captured all predictable 
+structure in the data where some patterns remain unexplained. While 
+Holt-Winters remains the strongest available model given the 
+current dataset, this finding directly motivates the incorporation 
+of external variables (promotions, holidays, price changes) in 
+future model iterations to reduce residual autocorrelation and 
+improve forecast reliability.
+
+### December 2025 Forecast & Business Impact
+
+The Holt-Winters model forecasts December 2025 chain-wide sales 
+at $239,481,293. Applying the validation MAPE of 20.39% as a 
+measure of forecast uncertainty yields the following planning range:
+
+| Metric | Value |
+|--------|-------|
+| December 2025 Forecast | $239,481,293 |
+| Uncertainty Range (±20.39%) | ±$48,830,276 |
+| Low Estimate | $190,651,017 |
+| High Estimate | $288,311,569 |
+
+At the per-store level across 169 Stater Bros. locations:
+
+| Metric | Value |
+|--------|-------|
+| Per-Store Forecast | $1,417,049 |
+| Per-Store Uncertainty | ±$288,936 |
+| Per-Store Range | $1,128,113 - $1,705,985 |
+
+For a grocery chain operating on thin margins, this uncertainty 
+range has direct operational implications. The $577,872 spread 
+between the low and high per-store estimates represents meaningful 
+inventory planning risk where understocking relative to the high 
+estimate risks stockouts on high-demand holiday items, while 
+overstocking relative to the low estimate increases carrying costs 
+and potential markdown exposure in the future.
+
+The December forecast of $1,417,049 per store provides buyers 
+with a demand signal for inventory planning. By applying 
+historical category revenue splits to the forecast, buyers can 
+estimate expected unit demand by department — produce, dairy, 
+dry goods, seasonal — and size purchase orders accordingly. 
+The uncertainty range ($1,128,113 – $1,705,985) informs how 
+conservatively or aggressively to order based on perishability 
+and supplier lead times.
+
+### Recommendations
+
+1. **Use Holt-Winters as the operational forecasting baseline** — 
+   retrain monthly as new sales actuals become available to keep the model 
+   current and reduce the train/test MAPE gap over time.
+
+2. **Incorporate external variables to address residual autocorrelation** — 
+   the significant Ljung-Box result (p = 0.001) indicates unexplained patterns 
+   remain in the residuals as does the ACF showing lags at 1 and 2.
+   
+   Promotional calendars, holiday indicators, and local economic conditions are 
+   the highest-priority candidates for improving model fit and reducing forecast 
+   error.
+
+3. **Apply forecast uncertainty ranges to inventory planning** — 
+   rather than treating the point forecast as a single target, buyers should use 
+   the low estimate ($1,128,113/store) for committed orders and the high 
+   estimate ($1,705,985/store) for contingency planning, adjusting based on 
+   supplier lead times and perishability of key items.
+
