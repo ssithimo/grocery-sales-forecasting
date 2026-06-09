@@ -98,7 +98,7 @@ st.markdown(f"""
 # ── Load & prep data ──────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    df = pd.read_csv("data/staterbros.csv")
+    df = pd.read_csv("staterbros.csv")
     df["Date"] = pd.to_datetime(df["Date"], format="%m/%d/%Y")
     df = df.sort_values("Date").reset_index(drop=True)
     df["Month"]     = df["Date"].dt.month
@@ -417,6 +417,9 @@ with tab2:
         ))
         fig3.update_layout(**PLOT_LAYOUT, height=320, yaxis_title="Avg Sales ($M)",
                            showlegend=False)
+        #remove gridlines
+        fig3.update_yaxes(showgrid=False)
+
         st.plotly_chart(fig3, use_container_width=True)
 
     # === Year-over-Year Annual Sales ===
@@ -425,18 +428,32 @@ with tab2:
 
     annual = df.groupby("Year")["SalesM"].sum().reset_index()
     annual["YoY_pct"] = annual["SalesM"].pct_change() * 100
+    
+    colors = [
+        RED if year == annual["Year"].max() else CARD for year in annual["Year"]]
+
+    labels = [
+        f"${sales/1000:.2f}B" if sales >= 1000 else f"${sales:.0f}M" for sales in annual["SalesM"]]
 
     fig4 = make_subplots(specs=[[{"secondary_y": True}]])
+    
     fig4.add_trace(go.Bar(
-        x=annual["Year"].astype(str), y=annual["SalesM"],
-        name="Total Sales ($M)", marker_color=RED,
-        text=annual["SalesM"].round(0).astype(int),
-        texttemplate="$%{text}M", textposition="outside",
-        textfont=dict(color=LIGHT, size=10),
-    ), secondary_y=False)
-    fig4.update_layout(**PLOT_LAYOUT, height=320, showlegend=True)
-    fig4.update_yaxes(title_text="Annual Sales ($M)", secondary_y=False,
-                      showgrid=True, gridcolor="#2A2A4A", color=MUTED)
+        x = annual["Year"].astype(str), y = annual["SalesM"],
+        name="Total Sales ($M)", marker_color=colors,
+        text = labels,
+        textposition = "outside",
+        textfont = dict(color = LIGHT, size = 10),
+    ), 
+    secondary_y = False
+    )
+    
+    fig4.update_layout(**PLOT_LAYOUT, height = 320, showlegend = False)
+    
+    fig4.update_yaxes(title_text="Annual Sales ($B)", secondary_y = False,
+                      showgrid = False, gridcolor="#2A2A4A", color=MUTED)
+    # fix xaxis to show integers only
+    fig4.update_xaxes(type="category")
+                      
     st.plotly_chart(fig4, use_container_width=True)
 
     # === Key insights ===
@@ -520,6 +537,7 @@ with tab3:
         fig6.add_hline(y=0, line_dash="dash", line_color=MUTED)
         fig6.update_layout(**PLOT_LAYOUT, height=230, yaxis_title="Residual ($M)",
                            title=dict(text="Residuals", font=dict(color=LIGHT, size=13)))
+        fig6.update_yaxes(showgrid = False)
         st.plotly_chart(fig6, use_container_width=True)
 
     # === Methodology summary ===
