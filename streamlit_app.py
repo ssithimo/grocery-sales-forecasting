@@ -98,7 +98,7 @@ st.markdown(f"""
 # ── Load & prep data ──────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    df = pd.read_csv("staterbros.csv")
+    df = pd.read_csv("data/staterbros.csv")
     df["Date"] = pd.to_datetime(df["Date"], format="%m/%d/%Y")
     df = df.sort_values("Date").reset_index(drop=True)
     df["Month"]     = df["Date"].dt.month
